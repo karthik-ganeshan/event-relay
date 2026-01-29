@@ -38,10 +38,19 @@ public class EventResource {
             throw new NotFoundException();
         }
 
+        String idempotencyKey = normalizeKey(request.idempotencyKey);
+        if (idempotencyKey != null) {
+            EventEntity existing = EventEntity.find("destinationId = ?1 and idempotencyKey = ?2",
+                    destination.id, idempotencyKey).firstResult();
+            if (existing != null) {
+                return Response.ok(new IdResponse(existing.id)).build();
+            }
+        }
+
         EventEntity event = new EventEntity();
         event.id = UUID.randomUUID();
         event.destinationId = destination.id;
-        event.idempotencyKey = request.idempotencyKey;
+        event.idempotencyKey = idempotencyKey;
         event.payload = request.payload;
         event.requestId = headerValue(headers, "X-Request-Id");
         event.userAgent = headerValue(headers, "User-Agent");
@@ -93,5 +102,13 @@ public class EventResource {
         }
         String value = headers.getHeaderString(name);
         return value != null && !value.isBlank() ? value : null;
+    }
+
+    private static String normalizeKey(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
