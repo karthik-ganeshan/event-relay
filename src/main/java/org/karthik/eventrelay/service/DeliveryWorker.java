@@ -2,12 +2,10 @@ package org.karthik.eventrelay.service;
 
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.transaction.Transactional;
-import java.time.Instant;
+import jakarta.inject.Inject;
 import java.util.List;
+import java.util.UUID;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.karthik.eventrelay.domain.DeliveryEntity;
-import org.karthik.eventrelay.domain.DeliveryStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,30 +19,24 @@ public class DeliveryWorker {
     @ConfigProperty(name = "eventrelay.worker.batch-size", defaultValue = "25")
     int batchSize;
 
+    @Inject
+    DeliveryService deliveryService;
+
     @Scheduled(every = "{eventrelay.worker.poll-interval}")
-    @Transactional
     void claimDueDeliveries() {
         if (!enabled) {
             return;
         }
 
-        Instant now = Instant.now();
-        List<DeliveryEntity> due = DeliveryEntity.find(
-                        "status = ?1 and nextAttemptAt <= ?2 order by nextAttemptAt",
-                        DeliveryStatus.PENDING,
-                        now)
-                .page(0, batchSize)
-                .list();
-
-        if (due.isEmpty()) {
+        List<UUID> claimed = deliveryService.claimDueDeliveries(batchSize);
+        if (claimed.isEmpty()) {
             return;
         }
 
-        for (DeliveryEntity delivery : due) {
-            delivery.status = DeliveryStatus.IN_PROGRESS;
-            delivery.attemptCount = delivery.attemptCount + 1;
+        for (UUID deliveryId : claimed) {
+            deliveryService.dispatchDelivery(deliveryId);
         }
 
-        LOG.info("Claimed {} deliveries", due.size());
+        LOG.info("Claimed {} deliveries", claimed.size());
     }
 }
