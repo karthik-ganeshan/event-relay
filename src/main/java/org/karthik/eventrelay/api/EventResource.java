@@ -25,6 +25,7 @@ import org.karthik.eventrelay.domain.EventEntity;
 import org.karthik.eventrelay.service.EventService;
 import org.hibernate.exception.ConstraintViolationException;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.jboss.logging.MDC;
 
 @Path("/events")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -54,7 +55,7 @@ public class EventResource {
             }
         }
 
-        String requestId = headerValue(headers, "X-Request-Id");
+        String requestId = requestIdFromContext(headers);
         String userAgent = headerValue(headers, "User-Agent");
         String sourceIp = httpRequest != null && httpRequest.remoteAddress() != null
                 ? httpRequest.remoteAddress().host()
@@ -122,6 +123,15 @@ public class EventResource {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String requestIdFromContext(HttpHeaders headers) {
+        String requestId = headerValue(headers, "X-Request-Id");
+        if (requestId != null) {
+            return requestId;
+        }
+        Object fromMdc = MDC.get("requestId");
+        return fromMdc != null ? fromMdc.toString() : null;
     }
 
     private static EventEntity findExistingEvent(UUID destinationId, String idempotencyKey) {
