@@ -23,6 +23,9 @@ public class DeliveryService {
     @ConfigProperty(name = "eventrelay.worker.retry-max-seconds", defaultValue = "300")
     int retryMaxSeconds;
 
+    @ConfigProperty(name = "eventrelay.worker.max-attempts", defaultValue = "10")
+    int maxAttempts;
+
     @Transactional
     public List<UUID> claimDueDeliveries(int batchSize) {
         Instant now = Instant.now();
@@ -56,6 +59,14 @@ public class DeliveryService {
             delivery.status = DeliveryStatus.FAILED;
             delivery.lastAttemptAt = now;
             delivery.lastError = "Missing event or destination";
+            delivery.nextAttemptAt = now;
+            return;
+        }
+
+        if (delivery.attemptCount >= maxAttempts) {
+            delivery.status = DeliveryStatus.FAILED;
+            delivery.lastAttemptAt = now;
+            delivery.lastError = "Max attempts exceeded";
             delivery.nextAttemptAt = now;
             return;
         }
