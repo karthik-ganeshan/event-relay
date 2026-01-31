@@ -5,12 +5,17 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.UUID;
+import jakarta.inject.Inject;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.karthik.eventrelay.domain.DeliveryEntity;
 import org.karthik.eventrelay.domain.DeliveryStatus;
 import org.karthik.eventrelay.domain.EventEntity;
 
 @ApplicationScoped
 public class EventService {
+    @Inject
+    MeterRegistry meterRegistry;
+
     @Transactional
     public EventEntity createEventAndDelivery(UUID destinationId,
                                               String idempotencyKey,
@@ -37,6 +42,9 @@ public class EventService {
         delivery.attemptCount = 0;
         delivery.nextAttemptAt = nextAttemptAt != null ? nextAttemptAt : Instant.now();
         delivery.persist();
+
+        meterRegistry.counter("eventrelay.events.created").increment();
+        meterRegistry.counter("eventrelay.deliveries.created").increment();
 
         return event;
     }
