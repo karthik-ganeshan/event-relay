@@ -7,6 +7,7 @@ import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.karthik.eventrelay.domain.DeliveryEntity;
 import org.karthik.eventrelay.domain.DeliveryStatus;
@@ -20,6 +21,9 @@ public class DeliveryService {
 
     @Inject
     EntityManager entityManager;
+
+    @Inject
+    MeterRegistry meterRegistry;
 
     @ConfigProperty(name = "eventrelay.worker.retry-base-seconds", defaultValue = "5")
     int retryBaseSeconds;
@@ -51,6 +55,9 @@ public class DeliveryService {
         List<UUID> ids = entityManager.createNativeQuery(sql)
                 .setParameter("limit", batchSize)
                 .getResultList();
+        if (!ids.isEmpty()) {
+            meterRegistry.counter("eventrelay.deliveries.claimed").increment(ids.size());
+        }
         return ids;
     }
 
@@ -70,6 +77,7 @@ public class DeliveryService {
             delivery.lastAttemptAt = now;
             delivery.lastError = "Missing event or destination";
             delivery.nextAttemptAt = now;
+            meterRegistry.counter("eventrelay.deliveries.failed").increment();
             return;
         }
 
@@ -78,6 +86,7 @@ public class DeliveryService {
             delivery.lastAttemptAt = now;
             delivery.lastError = "Max attempts exceeded";
             delivery.nextAttemptAt = now;
+            meterRegistry.counter("eventrelay.deliveries.dead_lettered").increment();
             return;
         }
 
@@ -89,16 +98,18 @@ public class DeliveryService {
         if (result.success) {
             delivery.status = DeliveryStatus.DELIVERED;
             delivery.nextAttemptAt = now;
+            meterRegistry.counter("eventrelay.deliveries.delivered").increment();
             return;
         }
 
         long backoffSeconds = computeBackoffSeconds(delivery.attemptCount);
         delivery.status = DeliveryStatus.PENDING;
         delivery.nextAttemptAt = now.plusSeconds(backoffSeconds);
+        meterRegistry.counter("eventrelay.deliveries.retried").increment();
     }
 
     private long computeBackoffSeconds(int attemptCount) {
-        // Simple exponential backoff with a hard cap.
+        // Simple exponential backoff with a hard cap
         long multiplier = 1L << Math.max(0, attemptCount - 1);
         long backoff = (long) retryBaseSeconds * multiplier;
         return Math.min(backoff, retryMaxSeconds);

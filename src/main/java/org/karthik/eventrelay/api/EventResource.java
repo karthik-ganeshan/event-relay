@@ -24,6 +24,7 @@ import org.karthik.eventrelay.domain.DestinationEntity;
 import org.karthik.eventrelay.domain.EventEntity;
 import org.karthik.eventrelay.service.EventService;
 import org.hibernate.exception.ConstraintViolationException;
+import io.micrometer.core.instrument.MeterRegistry;
 
 @Path("/events")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -31,6 +32,9 @@ import org.hibernate.exception.ConstraintViolationException;
 public class EventResource {
     @Inject
     EventService eventService;
+
+    @Inject
+    MeterRegistry meterRegistry;
 
     @POST
     public Response create(@Valid EventCreateRequest request,
@@ -45,6 +49,7 @@ public class EventResource {
         if (idempotencyKey != null) {
             EventEntity existing = findExistingEvent(destination.id, idempotencyKey);
             if (existing != null) {
+                meterRegistry.counter("eventrelay.events.idempotent_hit").increment();
                 return Response.ok(new IdResponse(existing.id)).build();
             }
         }
@@ -72,6 +77,7 @@ public class EventResource {
             if (idempotencyKey != null && isIdempotencyViolation(ex)) {
                 EventEntity existing = findExistingEvent(destination.id, idempotencyKey);
                 if (existing != null) {
+                    meterRegistry.counter("eventrelay.events.idempotent_hit").increment();
                     return Response.ok(new IdResponse(existing.id)).build();
                 }
             }
