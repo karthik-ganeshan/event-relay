@@ -13,6 +13,7 @@ import org.karthik.eventrelay.domain.DeliveryEntity;
 import org.karthik.eventrelay.domain.DeliveryStatus;
 import org.karthik.eventrelay.domain.DestinationEntity;
 import org.karthik.eventrelay.domain.EventEntity;
+import org.jboss.logging.MDC;
 
 @ApplicationScoped
 public class DeliveryService {
@@ -68,44 +69,52 @@ public class DeliveryService {
             return;
         }
 
+        MDC.put("deliveryId", delivery.id.toString());
+        MDC.put("eventId", delivery.eventId.toString());
+
         EventEntity event = EventEntity.findById(delivery.eventId);
         DestinationEntity destination = DestinationEntity.findById(delivery.destinationId);
         Instant now = Instant.now();
 
-        if (event == null || destination == null) {
-            delivery.status = DeliveryStatus.FAILED;
+        try {
+            if (event == null || destination == null) {
+                delivery.status = DeliveryStatus.FAILED;
+                delivery.lastAttemptAt = now;
+                delivery.lastError = "Missing event or destination";
+                delivery.nextAttemptAt = now;
+                meterRegistry.counter("eventrelay.deliveries.failed").increment();
+                return;
+            }
+
+            if (delivery.attemptCount >= maxAttempts) {
+                delivery.status = DeliveryStatus.FAILED;
+                delivery.lastAttemptAt = now;
+                delivery.lastError = "Max attempts exceeded";
+                delivery.nextAttemptAt = now;
+                meterRegistry.counter("eventrelay.deliveries.dead_lettered").increment();
+                return;
+            }
+
+            DeliveryResult result = dispatchService.send(event, destination);
             delivery.lastAttemptAt = now;
-            delivery.lastError = "Missing event or destination";
-            delivery.nextAttemptAt = now;
-            meterRegistry.counter("eventrelay.deliveries.failed").increment();
-            return;
+            delivery.lastStatusCode = result.statusCode;
+            delivery.lastError = result.error;
+
+            if (result.success) {
+                delivery.status = DeliveryStatus.DELIVERED;
+                delivery.nextAttemptAt = now;
+                meterRegistry.counter("eventrelay.deliveries.delivered").increment();
+                return;
+            }
+
+            long backoffSeconds = computeBackoffSeconds(delivery.attemptCount);
+            delivery.status = DeliveryStatus.PENDING;
+            delivery.nextAttemptAt = now.plusSeconds(backoffSeconds);
+            meterRegistry.counter("eventrelay.deliveries.retried").increment();
+        } finally {
+            MDC.remove("deliveryId");
+            MDC.remove("eventId");
         }
-
-        if (delivery.attemptCount >= maxAttempts) {
-            delivery.status = DeliveryStatus.FAILED;
-            delivery.lastAttemptAt = now;
-            delivery.lastError = "Max attempts exceeded";
-            delivery.nextAttemptAt = now;
-            meterRegistry.counter("eventrelay.deliveries.dead_lettered").increment();
-            return;
-        }
-
-        DeliveryResult result = dispatchService.send(event, destination);
-        delivery.lastAttemptAt = now;
-        delivery.lastStatusCode = result.statusCode;
-        delivery.lastError = result.error;
-
-        if (result.success) {
-            delivery.status = DeliveryStatus.DELIVERED;
-            delivery.nextAttemptAt = now;
-            meterRegistry.counter("eventrelay.deliveries.delivered").increment();
-            return;
-        }
-
-        long backoffSeconds = computeBackoffSeconds(delivery.attemptCount);
-        delivery.status = DeliveryStatus.PENDING;
-        delivery.nextAttemptAt = now.plusSeconds(backoffSeconds);
-        meterRegistry.counter("eventrelay.deliveries.retried").increment();
     }
 
     private long computeBackoffSeconds(int attemptCount) {
