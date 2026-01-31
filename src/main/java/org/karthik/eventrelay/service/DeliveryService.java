@@ -3,6 +3,7 @@ package org.karthik.eventrelay.service;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -17,6 +18,9 @@ public class DeliveryService {
     @Inject
     DeliveryDispatchService dispatchService;
 
+    @Inject
+    EntityManager entityManager;
+
     @ConfigProperty(name = "eventrelay.worker.retry-base-seconds", defaultValue = "5")
     int retryBaseSeconds;
 
@@ -28,20 +32,26 @@ public class DeliveryService {
 
     @Transactional
     public List<UUID> claimDueDeliveries(int batchSize) {
-        Instant now = Instant.now();
-        List<DeliveryEntity> due = DeliveryEntity.find(
-                        "status = ?1 and nextAttemptAt <= ?2 order by nextAttemptAt",
-                        DeliveryStatus.PENDING,
-                        now)
-                .page(0, batchSize)
-                .list();
+        // Claim rows atomically to avoid double processing when multiple workers run
+        String sql = """
+                UPDATE deliveries
+                SET status = 'IN_PROGRESS',
+                    attempt_count = attempt_count + 1
+                WHERE id IN (
+                    SELECT id FROM deliveries
+                    WHERE status = 'PENDING' AND next_attempt_at <= now()
+                    ORDER BY next_attempt_at
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT :limit
+                )
+                RETURNING id
+                """;
 
-        for (DeliveryEntity delivery : due) {
-            delivery.status = DeliveryStatus.IN_PROGRESS;
-            delivery.attemptCount = delivery.attemptCount + 1;
-        }
-
-        return due.stream().map(d -> d.id).toList();
+        @SuppressWarnings("unchecked")
+        List<UUID> ids = entityManager.createNativeQuery(sql)
+                .setParameter("limit", batchSize)
+                .getResultList();
+        return ids;
     }
 
     @Transactional
