@@ -21,6 +21,8 @@ import org.karthik.eventrelay.service.DeliveryService;
 @QuarkusTest
 @TestProfile(EventRelayTestProfile.class)
 class DeliveryRetryTest {
+    private static final String API_KEY = "dev-admin-key";
+
     @Inject
     DeliveryService deliveryService;
 
@@ -73,6 +75,7 @@ class DeliveryRetryTest {
         }
 
         given()
+                .header("X-API-Key", API_KEY)
                 .when()
                 .post("/deliveries/" + deliveryId + "/redrive")
                 .then()
@@ -92,6 +95,7 @@ class DeliveryRetryTest {
         String uniqueName = name + "-" + UUID.randomUUID();
         return given()
                 .contentType(ContentType.JSON)
+                .header("X-API-Key", API_KEY)
                 .body("{\"name\":\"" + uniqueName + "\",\"url\":\"" + url + "\"}")
                 .when()
                 .post("/destinations")
@@ -106,6 +110,7 @@ class DeliveryRetryTest {
     private String createEvent(String destinationId) {
         return given()
                 .contentType(ContentType.JSON)
+                .header("X-API-Key", API_KEY)
                 .body("{\"destinationId\":\"" + destinationId + "\",\"payload\":{\"userId\":\"123\"}}")
                 .when()
                 .post("/events")

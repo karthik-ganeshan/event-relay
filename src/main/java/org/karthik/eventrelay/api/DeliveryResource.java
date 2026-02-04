@@ -23,6 +23,7 @@ import org.karthik.eventrelay.api.dto.DeliveryResponse;
 import org.karthik.eventrelay.domain.DeliveryAttemptEntity;
 import org.karthik.eventrelay.domain.DeliveryEntity;
 import org.karthik.eventrelay.domain.DeliveryStatus;
+import org.karthik.eventrelay.security.AdminEndpoint;
 
 @Path("/deliveries")
 @Produces(MediaType.APPLICATION_JSON)
@@ -54,6 +55,7 @@ public class DeliveryResource {
 
     @POST
     @Path("/{id}/redrive")
+    @AdminEndpoint
     @Transactional
     public Response redrive(@PathParam("id") UUID id) {
         DeliveryEntity delivery = DeliveryEntity.findById(id);

@@ -12,12 +12,15 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 
 @QuarkusTest
 class EventRelayResourceTest {
+    private static final String API_KEY = "dev-admin-key";
+
     @Test
     void createDestinationAndEventCreatesDelivery() {
         String destinationId = createDestination("DiscordBot", "https://example.com/webhook");
 
         Response eventResponse = given()
                 .contentType(ContentType.JSON)
+                .header("X-API-Key", API_KEY)
                 .body("{\"destinationId\":\"" + destinationId + "\",\"payload\":{\"userId\":\"123\"}}")
                 .when()
                 .post("/events")
@@ -55,6 +58,7 @@ class EventRelayResourceTest {
 
         String firstId = given()
                 .contentType(ContentType.JSON)
+                .header("X-API-Key", API_KEY)
                 .body(body)
                 .when()
                 .post("/events")
@@ -66,6 +70,7 @@ class EventRelayResourceTest {
 
         String secondId = given()
                 .contentType(ContentType.JSON)
+                .header("X-API-Key", API_KEY)
                 .body(body)
                 .when()
                 .post("/events")
@@ -82,6 +87,7 @@ class EventRelayResourceTest {
         String uniqueName = name + "-" + UUID.randomUUID();
         return given()
                 .contentType(ContentType.JSON)
+                .header("X-API-Key", API_KEY)
                 .body("{\"name\":\"" + uniqueName + "\",\"url\":\"" + url + "\"}")
                 .when()
                 .post("/destinations")

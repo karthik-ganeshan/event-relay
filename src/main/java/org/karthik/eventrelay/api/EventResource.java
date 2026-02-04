@@ -26,6 +26,8 @@ import org.karthik.eventrelay.service.EventService;
 import org.hibernate.exception.ConstraintViolationException;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.jboss.logging.MDC;
+import org.karthik.eventrelay.security.AdminEndpoint;
+import org.karthik.eventrelay.security.RateLimited;
 
 @Path("/events")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -38,6 +40,8 @@ public class EventResource {
     MeterRegistry meterRegistry;
 
     @POST
+    @AdminEndpoint
+    @RateLimited
     public Response create(@Valid EventCreateRequest request,
                            @Context HttpHeaders headers,
                            @Context HttpServerRequest httpRequest) {

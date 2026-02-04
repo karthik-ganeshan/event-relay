@@ -16,12 +16,16 @@ import org.karthik.eventrelay.api.dto.DestinationCreateRequest;
 import org.karthik.eventrelay.api.dto.DestinationResponse;
 import org.karthik.eventrelay.api.dto.IdResponse;
 import org.karthik.eventrelay.domain.DestinationEntity;
+import org.karthik.eventrelay.security.AdminEndpoint;
+import org.karthik.eventrelay.security.RateLimited;
 
 @Path("/destinations")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class DestinationResource {
     @POST
+    @AdminEndpoint
+    @RateLimited
     @Transactional
     public Response create(@Valid DestinationCreateRequest request) {
         DestinationEntity entity = new DestinationEntity();
