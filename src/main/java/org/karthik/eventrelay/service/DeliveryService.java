@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.karthik.eventrelay.domain.DeliveryAttemptEntity;
 import org.karthik.eventrelay.domain.DeliveryEntity;
 import org.karthik.eventrelay.domain.DeliveryStatus;
 import org.karthik.eventrelay.domain.DestinationEntity;
@@ -69,24 +70,32 @@ public class DeliveryService {
             return;
         }
 
+        Instant startedAt = Instant.now();
+        Integer attemptStatusCode = null;
+        String attemptError = null;
+
         MDC.put("deliveryId", delivery.id.toString());
         MDC.put("eventId", delivery.eventId.toString());
 
-        EventEntity event = EventEntity.findById(delivery.eventId);
-        DestinationEntity destination = DestinationEntity.findById(delivery.destinationId);
         Instant now = Instant.now();
 
         try {
+            EventEntity event = EventEntity.findById(delivery.eventId);
+            DestinationEntity destination = DestinationEntity.findById(delivery.destinationId);
+
             if (event == null || destination == null) {
+                attemptError = "Missing event or destination";
                 delivery.status = DeliveryStatus.FAILED;
                 delivery.lastAttemptAt = now;
-                delivery.lastError = "Missing event or destination";
+                delivery.lastError = attemptError;
                 delivery.nextAttemptAt = now;
                 meterRegistry.counter("eventrelay.deliveries.failed").increment();
                 return;
             }
 
             DeliveryResult result = dispatchService.send(event, destination);
+            attemptStatusCode = result.statusCode;
+            attemptError = result.error;
             delivery.lastAttemptAt = now;
             delivery.lastStatusCode = result.statusCode;
             delivery.lastError = result.error;
@@ -111,9 +120,22 @@ public class DeliveryService {
             delivery.nextAttemptAt = now.plusSeconds(backoffSeconds);
             meterRegistry.counter("eventrelay.deliveries.retried").increment();
         } finally {
+            recordAttempt(delivery, startedAt, Instant.now(), attemptStatusCode, attemptError);
             MDC.remove("deliveryId");
             MDC.remove("eventId");
         }
+    }
+
+    private void recordAttempt(DeliveryEntity delivery, Instant startedAt, Instant finishedAt, Integer statusCode, String error) {
+        DeliveryAttemptEntity attempt = new DeliveryAttemptEntity();
+        attempt.id = UUID.randomUUID();
+        attempt.deliveryId = delivery.id;
+        attempt.attemptNo = delivery.attemptCount;
+        attempt.statusCode = statusCode;
+        attempt.error = error;
+        attempt.startedAt = startedAt;
+        attempt.finishedAt = finishedAt;
+        attempt.persist();
     }
 
     private long computeBackoffSeconds(int attemptCount) {

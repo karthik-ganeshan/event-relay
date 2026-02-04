@@ -10,6 +10,7 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -47,6 +48,44 @@ class DeliveryRetryTest {
         DeliveryEntity afterSecond = DeliveryEntity.findById(deliveryId);
         assertEquals(DeliveryStatus.FAILED, afterSecond.status);
         assertEquals("Max attempts exceeded", afterSecond.lastError);
+
+        given()
+                .when()
+                .get("/deliveries/" + deliveryId + "/attempts")
+                .then()
+                .statusCode(200)
+                .body("size()", equalTo(maxAttempts));
+    }
+
+    @Test
+    void redriveResetsFailedDelivery() {
+        String destinationId = createDestination("RedriveDest", "http://localhost:65535/webhook");
+        String eventId = createEvent(destinationId);
+
+        DeliveryEntity delivery = DeliveryEntity.find("eventId", UUID.fromString(eventId)).firstResult();
+        UUID deliveryId = delivery.id;
+        entityManager.clear();
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            List<UUID> claimed = deliveryService.claimDueDeliveries(10);
+            assertTrue(claimed.contains(deliveryId));
+            deliveryService.dispatchDelivery(deliveryId);
+        }
+
+        given()
+                .when()
+                .post("/deliveries/" + deliveryId + "/redrive")
+                .then()
+                .statusCode(204);
+
+        given()
+                .when()
+                .get("/deliveries?eventId=" + eventId)
+                .then()
+                .statusCode(200)
+                .body("size()", equalTo(1))
+                .body("[0].status", equalTo("PENDING"))
+                .body("[0].attemptCount", equalTo(0));
     }
 
     private String createDestination(String name, String url) {
