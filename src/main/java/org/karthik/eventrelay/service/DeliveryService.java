@@ -7,6 +7,7 @@ import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.karthik.eventrelay.domain.DeliveryAttemptEntity;
@@ -33,29 +34,68 @@ public class DeliveryService {
     @ConfigProperty(name = "eventrelay.worker.retry-max-seconds", defaultValue = "300")
     int retryMaxSeconds;
 
+    @ConfigProperty(name = "eventrelay.worker.retry-jitter-percent", defaultValue = "20")
+    int retryJitterPercent;
+
     @ConfigProperty(name = "eventrelay.worker.max-attempts", defaultValue = "10")
     int maxAttempts;
+
+    @ConfigProperty(name = "eventrelay.worker.max-in-flight-per-destination", defaultValue = "2")
+    int maxInFlightPerDestination;
+
+    @ConfigProperty(name = "eventrelay.worker.failure-threshold", defaultValue = "3")
+    int failureThreshold;
+
+    @ConfigProperty(name = "eventrelay.worker.cooldown-seconds", defaultValue = "60")
+    int cooldownSeconds;
 
     @Transactional
     public List<UUID> claimDueDeliveries(int batchSize) {
         // Claim rows atomically to avoid double processing when multiple workers run
         String sql = """
+                WITH ranked AS (
+                    SELECT d.id,
+                           d.destination_id,
+                           d.next_attempt_at,
+                           row_number() over (partition by d.destination_id order by d.next_attempt_at) AS rn
+                    FROM deliveries d
+                    JOIN destinations dest ON dest.id = d.destination_id
+                    WHERE d.status = 'PENDING'
+                      AND d.next_attempt_at <= now()
+                      AND (dest.cooldown_until IS NULL OR dest.cooldown_until <= now())
+                ),
+                capacity AS (
+                    SELECT destination_id,
+                           GREATEST(0, :maxInFlight - COUNT(*)) AS slots
+                    FROM deliveries
+                    WHERE status = 'IN_PROGRESS'
+                    GROUP BY destination_id
+                ),
+                selected AS (
+                    SELECT r.id
+                    FROM ranked r
+                    LEFT JOIN capacity c ON c.destination_id = r.destination_id
+                    WHERE r.rn <= COALESCE(c.slots, :maxInFlight)
+                    ORDER BY r.next_attempt_at
+                    LIMIT :limit
+                ),
+                locked AS (
+                    SELECT d.id
+                    FROM deliveries d
+                    JOIN selected s ON s.id = d.id
+                    FOR UPDATE SKIP LOCKED
+                )
                 UPDATE deliveries
                 SET status = 'IN_PROGRESS',
                     attempt_count = attempt_count + 1
-                WHERE id IN (
-                    SELECT id FROM deliveries
-                    WHERE status = 'PENDING' AND next_attempt_at <= now()
-                    ORDER BY next_attempt_at
-                    FOR UPDATE SKIP LOCKED
-                    LIMIT :limit
-                )
+                WHERE id IN (SELECT id FROM locked)
                 RETURNING id
                 """;
 
         @SuppressWarnings("unchecked")
         List<UUID> ids = entityManager.createNativeQuery(sql)
                 .setParameter("limit", batchSize)
+                .setParameter("maxInFlight", maxInFlightPerDestination)
                 .getResultList();
         if (!ids.isEmpty()) {
             meterRegistry.counter("eventrelay.deliveries.claimed").increment(ids.size());
@@ -83,6 +123,16 @@ public class DeliveryService {
             EventEntity event = EventEntity.findById(delivery.eventId);
             DestinationEntity destination = DestinationEntity.findById(delivery.destinationId);
 
+            if (destination != null && destination.cooldownUntil != null && destination.cooldownUntil.isAfter(now)) {
+                attemptError = "Destination in cooldown";
+                delivery.status = DeliveryStatus.PENDING;
+                delivery.lastAttemptAt = now;
+                delivery.lastError = attemptError;
+                delivery.nextAttemptAt = destination.cooldownUntil;
+                meterRegistry.counter("eventrelay.deliveries.deferred_cooldown").increment();
+                return;
+            }
+
             if (event == null || destination == null) {
                 attemptError = "Missing event or destination";
                 delivery.status = DeliveryStatus.FAILED;
@@ -101,11 +151,14 @@ public class DeliveryService {
             delivery.lastError = result.error;
 
             if (result.success) {
+                resetFailures(destination);
                 delivery.status = DeliveryStatus.DELIVERED;
                 delivery.nextAttemptAt = now;
                 meterRegistry.counter("eventrelay.deliveries.delivered").increment();
                 return;
             }
+
+            registerFailure(destination, now);
 
             if (delivery.attemptCount >= maxAttempts) {
                 delivery.status = DeliveryStatus.FAILED;
@@ -142,6 +195,33 @@ public class DeliveryService {
         // Simple exponential backoff with a hard cap
         long multiplier = 1L << Math.max(0, attemptCount - 1);
         long backoff = (long) retryBaseSeconds * multiplier;
-        return Math.min(backoff, retryMaxSeconds);
+        long capped = Math.min(backoff, retryMaxSeconds);
+        if (capped == 0 || retryJitterPercent <= 0) {
+            return capped;
+        }
+        double jitter = retryJitterPercent / 100.0;
+        double min = Math.max(0.0, 1.0 - jitter);
+        double max = 1.0 + jitter;
+        double factor = ThreadLocalRandom.current().nextDouble(min, max);
+        return Math.max(0L, Math.round(capped * factor));
+    }
+
+    private void resetFailures(DestinationEntity destination) {
+        if (destination == null) {
+            return;
+        }
+        destination.consecutiveFailures = 0;
+        destination.cooldownUntil = null;
+    }
+
+    private void registerFailure(DestinationEntity destination, Instant now) {
+        if (destination == null) {
+            return;
+        }
+        destination.consecutiveFailures = destination.consecutiveFailures + 1;
+        if (destination.consecutiveFailures >= failureThreshold) {
+            destination.cooldownUntil = now.plusSeconds(cooldownSeconds);
+            meterRegistry.counter("eventrelay.destinations.cooldowned").increment();
+        }
     }
 }

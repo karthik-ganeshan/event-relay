@@ -30,6 +30,12 @@ public class DestinationEntity extends PanacheEntityBase {
     @Column(name = "is_active", nullable = false)
     public boolean isActive = true;
 
+    @Column(name = "consecutive_failures", nullable = false)
+    public int consecutiveFailures;
+
+    @Column(name = "cooldown_until")
+    public Instant cooldownUntil;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     public Instant createdAt;
 
