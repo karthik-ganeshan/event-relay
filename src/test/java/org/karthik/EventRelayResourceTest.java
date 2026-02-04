@@ -79,9 +79,10 @@ class EventRelayResourceTest {
     }
 
     private String createDestination(String name, String url) {
+        String uniqueName = name + "-" + UUID.randomUUID();
         return given()
                 .contentType(ContentType.JSON)
-                .body("{\"name\":\"" + name + "\",\"url\":\"" + url + "\"}")
+                .body("{\"name\":\"" + uniqueName + "\",\"url\":\"" + url + "\"}")
                 .when()
                 .post("/destinations")
                 .then()

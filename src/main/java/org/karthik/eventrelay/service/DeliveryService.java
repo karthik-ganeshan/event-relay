@@ -86,15 +86,6 @@ public class DeliveryService {
                 return;
             }
 
-            if (delivery.attemptCount >= maxAttempts) {
-                delivery.status = DeliveryStatus.FAILED;
-                delivery.lastAttemptAt = now;
-                delivery.lastError = "Max attempts exceeded";
-                delivery.nextAttemptAt = now;
-                meterRegistry.counter("eventrelay.deliveries.dead_lettered").increment();
-                return;
-            }
-
             DeliveryResult result = dispatchService.send(event, destination);
             delivery.lastAttemptAt = now;
             delivery.lastStatusCode = result.statusCode;
@@ -104,6 +95,14 @@ public class DeliveryService {
                 delivery.status = DeliveryStatus.DELIVERED;
                 delivery.nextAttemptAt = now;
                 meterRegistry.counter("eventrelay.deliveries.delivered").increment();
+                return;
+            }
+
+            if (delivery.attemptCount >= maxAttempts) {
+                delivery.status = DeliveryStatus.FAILED;
+                delivery.lastError = "Max attempts exceeded";
+                delivery.nextAttemptAt = now;
+                meterRegistry.counter("eventrelay.deliveries.dead_lettered").increment();
                 return;
             }
 
