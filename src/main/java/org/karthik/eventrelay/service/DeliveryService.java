@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.karthik.eventrelay.domain.DeliveryAttemptEntity;
 import org.karthik.eventrelay.domain.DeliveryEntity;
@@ -120,6 +121,7 @@ public class DeliveryService {
 
         MDC.put("deliveryId", delivery.id.toString());
         MDC.put("eventId", delivery.eventId.toString());
+        MDC.put("attempt", String.valueOf(delivery.attemptCount));
 
         Instant now = Instant.now();
 
@@ -134,7 +136,8 @@ public class DeliveryService {
                 delivery.lastAttemptAt = now;
                 delivery.lastError = attemptError;
                 delivery.nextAttemptAt = destination.cooldownUntil;
-                meterRegistry.counter("eventrelay.deliveries.deferred_cooldown").increment();
+                meterRegistry.counter("eventrelay.deliveries.deferred_cooldown", "destinationId", destinationTag(destination))
+                        .increment();
                 return;
             }
 
@@ -145,7 +148,8 @@ public class DeliveryService {
                 delivery.lastAttemptAt = now;
                 delivery.lastError = attemptError;
                 delivery.nextAttemptAt = now;
-                meterRegistry.counter("eventrelay.deliveries.failed").increment();
+                meterRegistry.counter("eventrelay.deliveries.failed", "destinationId", destinationTag(destination))
+                        .increment();
                 return;
             }
 
@@ -161,7 +165,8 @@ public class DeliveryService {
                 resetFailures(destination);
                 delivery.status = DeliveryStatus.DELIVERED;
                 delivery.nextAttemptAt = now;
-                meterRegistry.counter("eventrelay.deliveries.delivered").increment();
+                meterRegistry.counter("eventrelay.deliveries.delivered", "destinationId", destinationTag(destination))
+                        .increment();
                 return;
             }
 
@@ -172,7 +177,8 @@ public class DeliveryService {
                 delivery.status = DeliveryStatus.FAILED;
                 delivery.lastError = "Max attempts exceeded";
                 delivery.nextAttemptAt = now;
-                meterRegistry.counter("eventrelay.deliveries.dead_lettered").increment();
+                meterRegistry.counter("eventrelay.deliveries.dead_lettered", "destinationId", destinationTag(destination))
+                        .increment();
                 return;
             }
 
@@ -180,12 +186,16 @@ public class DeliveryService {
             long backoffSeconds = computeBackoffSeconds(delivery.attemptCount);
             delivery.status = DeliveryStatus.PENDING;
             delivery.nextAttemptAt = now.plusSeconds(backoffSeconds);
-            meterRegistry.counter("eventrelay.deliveries.retried").increment();
+            meterRegistry.counter("eventrelay.deliveries.retried", "destinationId", destinationTag(destination))
+                    .increment();
         } finally {
             recordAttempt(delivery, startedAt, Instant.now(), attemptStatusCode, attemptError);
+            MDC.put("outcome", outcome);
             recordOutcomeMetrics(destination, outcome, startNanos);
             MDC.remove("deliveryId");
             MDC.remove("eventId");
+            MDC.remove("attempt");
+            MDC.remove("outcome");
         }
     }
 
@@ -205,7 +215,10 @@ public class DeliveryService {
         String destinationId = destination != null ? destination.id.toString() : "unknown";
         meterRegistry.counter("eventrelay.deliveries.outcome", "destinationId", destinationId, "outcome", outcome)
                 .increment();
-        meterRegistry.timer("eventrelay.deliveries.latency", "destinationId", destinationId, "outcome", outcome)
+        Timer.builder("eventrelay.deliveries.latency")
+                .publishPercentileHistogram(true)
+                .tags("destinationId", destinationId, "outcome", outcome)
+                .register(meterRegistry)
                 .record(Duration.ofNanos(System.nanoTime() - startNanos));
     }
 
@@ -239,7 +252,12 @@ public class DeliveryService {
         destination.consecutiveFailures = destination.consecutiveFailures + 1;
         if (destination.consecutiveFailures >= failureThreshold) {
             destination.cooldownUntil = now.plusSeconds(cooldownSeconds);
-            meterRegistry.counter("eventrelay.destinations.cooldowned").increment();
+            meterRegistry.counter("eventrelay.destinations.cooldowned", "destinationId", destinationTag(destination))
+                    .increment();
         }
+    }
+
+    private String destinationTag(DestinationEntity destination) {
+        return destination != null ? destination.id.toString() : "unknown";
     }
 }
