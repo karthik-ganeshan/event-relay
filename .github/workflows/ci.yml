@@ -19,3 +19,5 @@ jobs:
           cache: maven
       - name: Run tests
         run: ./mvnw -B test
+      - name: Build Docker image
+        run: docker build -t event-relay:ci .
