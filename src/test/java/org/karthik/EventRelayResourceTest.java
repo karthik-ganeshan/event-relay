@@ -41,6 +41,7 @@ class EventRelayResourceTest {
                 .body("destinationId", CoreMatchers.equalTo(destinationId));
 
         given()
+                .header("X-API-Key", API_KEY)
                 .when()
                 .get("/deliveries?eventId=" + eventId)
                 .then()

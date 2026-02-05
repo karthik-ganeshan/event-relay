@@ -25,6 +25,7 @@ import org.karthik.eventrelay.domain.DeliveryEntity;
 import org.karthik.eventrelay.domain.DeliveryStatus;
 import org.karthik.eventrelay.security.AdminEndpoint;
 
+@AdminEndpoint
 @Path("/deliveries")
 @Produces(MediaType.APPLICATION_JSON)
 public class DeliveryResource {

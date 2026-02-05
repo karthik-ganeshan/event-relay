@@ -53,6 +53,7 @@ class DeliveryRetryTest {
         assertEquals("Max attempts exceeded", afterSecond.lastError);
 
         given()
+                .header("X-API-Key", API_KEY)
                 .when()
                 .get("/deliveries/" + deliveryId + "/attempts")
                 .then()
@@ -83,6 +84,7 @@ class DeliveryRetryTest {
                 .statusCode(204);
 
         given()
+                .header("X-API-Key", API_KEY)
                 .when()
                 .get("/deliveries?eventId=" + eventId)
                 .then()

@@ -10,6 +10,7 @@ import jakarta.ws.rs.ext.Provider;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import jakarta.ws.rs.core.Context;
 
@@ -27,6 +28,7 @@ public class RateLimitFilter implements ContainerRequestFilter {
     HttpServerRequest httpRequest;
 
     private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+    private final AtomicLong lastCleanupMs = new AtomicLong(0L);
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
@@ -43,6 +45,11 @@ public class RateLimitFilter implements ContainerRequestFilter {
             existing.count.incrementAndGet();
             return existing;
         });
+
+        long lastCleanup = lastCleanupMs.get();
+        if (now - lastCleanup >= windowMs && lastCleanupMs.compareAndSet(lastCleanup, now)) {
+            windows.entrySet().removeIf(entry -> now - entry.getValue().windowStartMs >= windowMs);
+        }
 
         int current = window.count.get();
         if (current > limit) {

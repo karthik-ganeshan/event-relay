@@ -64,6 +64,7 @@ public class DeliveryService {
                     JOIN destinations dest ON dest.id = d.destination_id
                     WHERE d.status = 'PENDING'
                       AND d.next_attempt_at <= now()
+                      AND dest.is_active = true
                       AND (dest.cooldown_until IS NULL OR dest.cooldown_until <= now())
                 ),
                 capacity AS (
@@ -129,6 +130,21 @@ public class DeliveryService {
             EventEntity event = EventEntity.findById(delivery.eventId);
             destination = DestinationEntity.findById(delivery.destinationId);
 
+            if (destination != null && !destination.isActive) {
+                attemptError = "Destination inactive";
+                outcome = "inactive";
+                delivery.status = DeliveryStatus.PENDING;
+                delivery.lastAttemptAt = now;
+                delivery.lastError = attemptError;
+                delivery.nextAttemptAt = now;
+                if (delivery.attemptCount > 0) {
+                    delivery.attemptCount = delivery.attemptCount - 1;
+                }
+                meterRegistry.counter("eventrelay.deliveries.deferred_inactive", "destinationId", destinationTag(destination))
+                        .increment();
+                return;
+            }
+
             if (destination != null && destination.cooldownUntil != null && destination.cooldownUntil.isAfter(now)) {
                 attemptError = "Destination in cooldown";
                 outcome = "cooldown";
@@ -136,6 +152,9 @@ public class DeliveryService {
                 delivery.lastAttemptAt = now;
                 delivery.lastError = attemptError;
                 delivery.nextAttemptAt = destination.cooldownUntil;
+                if (delivery.attemptCount > 0) {
+                    delivery.attemptCount = delivery.attemptCount - 1;
+                }
                 meterRegistry.counter("eventrelay.deliveries.deferred_cooldown", "destinationId", destinationTag(destination))
                         .increment();
                 return;
