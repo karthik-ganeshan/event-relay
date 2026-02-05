@@ -111,6 +111,14 @@ http://localhost:8080/q/metrics
 ```
 Look for counters prefixed with `eventrelay.`.
 
+## Health checks
+Liveness and readiness endpoints:
+```
+http://localhost:8080/q/health
+http://localhost:8080/q/health/live
+http://localhost:8080/q/health/ready
+```
+
 ## Load test (local)
 Run the service with a relaxed rate limit profile:
 ```bash
