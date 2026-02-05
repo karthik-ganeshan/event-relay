@@ -1,14 +1,17 @@
 # event-relay
 
-Event Relay is a small backend service that accepts events, stores them in Postgres, and delivers them to configured webhook destinations with retries, idempotency, and basic observability.
+Event Relay is a small backend service that accepts events, stores them in Postgres, and delivers them to configured webhook destinations with retries, idempotency, and production-style reliability controls.
 
 ## Features
 - REST API for destinations and events
 - Durable storage in Postgres via Flyway migrations
 - Idempotent event ingestion (per destination + idempotency key)
-- Delivery worker with retry/backoff and max-attempt cutoff
+- Delivery worker with retry/backoff, jitter, and max-attempt cutoff
 - Safe claiming with SKIP LOCKED for concurrent workers
+- Per-destination concurrency limits and cooldown circuit breaker
 - HMAC signing for webhook deliveries (optional)
+- Attempt history and redrive for failed deliveries
+- API key auth + rate limits on admin endpoints
 - Prometheus metrics and request correlation logging
 
 ## Prerequisites
@@ -23,6 +26,18 @@ Event Relay is a small backend service that accepts events, stores them in Postg
 
 Swagger UI: http://localhost:8080/q/swagger-ui
 
+## Security
+Admin endpoints require an API key via `X-API-Key`:
+- `POST /destinations`
+- `POST /events`
+- `POST /deliveries/{id}/redrive`
+
+Default dev key in `application.properties`: `dev-admin-key`
+
+## Limits
+- Request body size: `1M`
+- Create endpoint rate limit defaults: 60 requests / 60 seconds
+
 ## Enable delivery worker
 By default the worker is disabled. To enable it in dev:
 ```bash
@@ -34,6 +49,7 @@ Create a destination:
 ```bash
 curl -s -X POST http://localhost:8080/destinations \
   -H 'Content-Type: application/json' \
+  -H 'X-API-Key: dev-admin-key' \
   -d '{"name":"DiscordBot","url":"https://example.com/webhook","authType":"HMAC","authSecret":"secret"}'
 ```
 
@@ -41,6 +57,7 @@ Create an event:
 ```bash
 curl -s -X POST http://localhost:8080/events \
   -H 'Content-Type: application/json' \
+  -H 'X-API-Key: dev-admin-key' \
   -H 'X-Request-Id: req-123' \
   -d '{"destinationId":"DEST_ID","idempotencyKey":"abc-123","payload":{"userId":"123"}}'
 ```
@@ -53,6 +70,17 @@ curl -s http://localhost:8080/events/EVENT_ID
 List deliveries:
 ```bash
 curl -s "http://localhost:8080/deliveries?eventId=EVENT_ID"
+```
+
+List delivery attempts:
+```bash
+curl -s "http://localhost:8080/deliveries/DELIVERY_ID/attempts"
+```
+
+Redrive failed delivery:
+```bash
+curl -s -X POST "http://localhost:8080/deliveries/DELIVERY_ID/redrive" \
+  -H 'X-API-Key: dev-admin-key'
 ```
 
 ## HMAC webhook signing
@@ -72,11 +100,41 @@ http://localhost:8080/q/metrics
 ```
 Look for counters prefixed with `eventrelay.`.
 
+## Load test (local)
+Run the service with a relaxed rate limit profile:
+```bash
+QUARKUS_PROFILE=loadtest ./mvnw quarkus:dev -Ddebug=false
+```
+
+In another terminal:
+```bash
+BASE_URL=http://localhost:8080 REQUESTS=500 CONCURRENCY=20 ./scripts/load/run_event_load.sh
+```
+
+Sample result on a local machine:
+```
+Requests: 500
+Elapsed(s): 0.631
+RPS: 792.9
+Status codes: {'201': 500}
+Latency(s) p50/p95/p99/avg/max: 0.0151 0.0391 0.298 0.0249 0.5332
+```
+
 ## Tests
 Run integration tests:
 ```bash
 ./mvnw test
 ```
+
+## Runbook
+Common failure scenarios:
+- Destination down: delivery retries with backoff + jitter
+- Max attempts reached: delivery marked FAILED (dead-lettered)
+- Destination repeatedly failing: destination enters cooldown
+
+Recovery:
+- Use `POST /deliveries/{id}/redrive` to requeue a FAILED delivery
+- Review attempt history via `GET /deliveries/{id}/attempts`
 
 ## Configuration
 Worker settings (defaults in `application.properties`):
@@ -86,4 +144,8 @@ Worker settings (defaults in `application.properties`):
 - `eventrelay.worker.request-timeout=5s`
 - `eventrelay.worker.retry-base-seconds=5`
 - `eventrelay.worker.retry-max-seconds=300`
+- `eventrelay.worker.retry-jitter-percent=20`
 - `eventrelay.worker.max-attempts=10`
+- `eventrelay.worker.max-in-flight-per-destination=2`
+- `eventrelay.worker.failure-threshold=3`
+- `eventrelay.worker.cooldown-seconds=60`
