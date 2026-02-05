@@ -4,6 +4,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -110,9 +111,12 @@ public class DeliveryService {
             return;
         }
 
+        long startNanos = System.nanoTime();
         Instant startedAt = Instant.now();
         Integer attemptStatusCode = null;
         String attemptError = null;
+        String outcome = "unknown";
+        DestinationEntity destination = null;
 
         MDC.put("deliveryId", delivery.id.toString());
         MDC.put("eventId", delivery.eventId.toString());
@@ -121,10 +125,11 @@ public class DeliveryService {
 
         try {
             EventEntity event = EventEntity.findById(delivery.eventId);
-            DestinationEntity destination = DestinationEntity.findById(delivery.destinationId);
+            destination = DestinationEntity.findById(delivery.destinationId);
 
             if (destination != null && destination.cooldownUntil != null && destination.cooldownUntil.isAfter(now)) {
                 attemptError = "Destination in cooldown";
+                outcome = "cooldown";
                 delivery.status = DeliveryStatus.PENDING;
                 delivery.lastAttemptAt = now;
                 delivery.lastError = attemptError;
@@ -135,6 +140,7 @@ public class DeliveryService {
 
             if (event == null || destination == null) {
                 attemptError = "Missing event or destination";
+                outcome = "missing";
                 delivery.status = DeliveryStatus.FAILED;
                 delivery.lastAttemptAt = now;
                 delivery.lastError = attemptError;
@@ -151,6 +157,7 @@ public class DeliveryService {
             delivery.lastError = result.error;
 
             if (result.success) {
+                outcome = "delivered";
                 resetFailures(destination);
                 delivery.status = DeliveryStatus.DELIVERED;
                 delivery.nextAttemptAt = now;
@@ -161,6 +168,7 @@ public class DeliveryService {
             registerFailure(destination, now);
 
             if (delivery.attemptCount >= maxAttempts) {
+                outcome = "dead_letter";
                 delivery.status = DeliveryStatus.FAILED;
                 delivery.lastError = "Max attempts exceeded";
                 delivery.nextAttemptAt = now;
@@ -168,12 +176,14 @@ public class DeliveryService {
                 return;
             }
 
+            outcome = "retry";
             long backoffSeconds = computeBackoffSeconds(delivery.attemptCount);
             delivery.status = DeliveryStatus.PENDING;
             delivery.nextAttemptAt = now.plusSeconds(backoffSeconds);
             meterRegistry.counter("eventrelay.deliveries.retried").increment();
         } finally {
             recordAttempt(delivery, startedAt, Instant.now(), attemptStatusCode, attemptError);
+            recordOutcomeMetrics(destination, outcome, startNanos);
             MDC.remove("deliveryId");
             MDC.remove("eventId");
         }
@@ -189,6 +199,14 @@ public class DeliveryService {
         attempt.startedAt = startedAt;
         attempt.finishedAt = finishedAt;
         attempt.persist();
+    }
+
+    private void recordOutcomeMetrics(DestinationEntity destination, String outcome, long startNanos) {
+        String destinationId = destination != null ? destination.id.toString() : "unknown";
+        meterRegistry.counter("eventrelay.deliveries.outcome", "destinationId", destinationId, "outcome", outcome)
+                .increment();
+        meterRegistry.timer("eventrelay.deliveries.latency", "destinationId", destinationId, "outcome", outcome)
+                .record(Duration.ofNanos(System.nanoTime() - startNanos));
     }
 
     private long computeBackoffSeconds(int attemptCount) {
