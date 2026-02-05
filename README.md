@@ -26,10 +26,19 @@ Event Relay is a small backend service that accepts events, stores them in Postg
 
 Swagger UI: http://localhost:8080/q/swagger-ui
 
+## Run with Docker Compose
+```bash
+docker compose up --build
+```
+
+Default API key in `docker-compose.yml`: `dev-admin-key`
+
 ## Security
 Admin endpoints require an API key via `X-API-Key`:
 - `POST /destinations`
 - `POST /events`
+- `GET /deliveries`
+- `GET /deliveries/{id}/attempts`
 - `POST /deliveries/{id}/redrive`
 
 Default dev key in `application.properties`: `dev-admin-key`
@@ -69,12 +78,14 @@ curl -s http://localhost:8080/events/EVENT_ID
 
 List deliveries:
 ```bash
-curl -s "http://localhost:8080/deliveries?eventId=EVENT_ID"
+curl -s "http://localhost:8080/deliveries?eventId=EVENT_ID" \
+  -H 'X-API-Key: dev-admin-key'
 ```
 
 List delivery attempts:
 ```bash
-curl -s "http://localhost:8080/deliveries/DELIVERY_ID/attempts"
+curl -s "http://localhost:8080/deliveries/DELIVERY_ID/attempts" \
+  -H 'X-API-Key: dev-admin-key'
 ```
 
 Redrive failed delivery:

@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: eventrelay
+      POSTGRES_USER: eventrelay
+      POSTGRES_PASSWORD: eventrelay
+    ports:
+      - "5432:5432"
+    volumes:
+      - eventrelay-db:/var/lib/postgresql/data
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    environment:
+      QUARKUS_PROFILE: prod
+      DB_URL: jdbc:postgresql://db:5432/eventrelay
+      DB_USER: eventrelay
+      DB_PASSWORD: eventrelay
+      EVENTRELAY_API_KEY: dev-admin-key
+      EVENTRELAY_WORKER_ENABLED: "false"
+    ports:
+      - "8080:8080"
+
+volumes:
+  eventrelay-db:
