@@ -5,6 +5,11 @@ services:
       POSTGRES_DB: eventrelay
       POSTGRES_USER: eventrelay
       POSTGRES_PASSWORD: eventrelay
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventrelay -d eventrelay"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     ports:
       - "5432:5432"
     volumes:
@@ -14,7 +19,8 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       QUARKUS_PROFILE: prod
       DB_URL: jdbc:postgresql://db:5432/eventrelay
@@ -22,6 +28,11 @@ services:
       DB_PASSWORD: eventrelay
       EVENTRELAY_API_KEY: dev-admin-key
       EVENTRELAY_WORKER_ENABLED: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/q/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "8080:8080"
 

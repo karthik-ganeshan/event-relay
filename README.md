@@ -33,6 +33,25 @@ docker compose up --build
 
 Default API key in `docker-compose.yml`: `dev-admin-key`
 
+## Demo flow (Docker)
+In another terminal:
+```bash
+DEST_ID=$(curl -s -X POST http://localhost:8080/destinations \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: dev-admin-key' \
+  -d '{"name":"Demo","url":"https://example.com/webhook"}' | \
+  python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+EVENT_ID=$(curl -s -X POST http://localhost:8080/events \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: dev-admin-key' \
+  -d "{\"destinationId\":\"$DEST_ID\",\"payload\":{\"userId\":\"123\"}}" | \
+  python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+curl -s "http://localhost:8080/deliveries?eventId=$EVENT_ID" \
+  -H 'X-API-Key: dev-admin-key'
+```
+
 ## Security
 Admin endpoints require an API key via `X-API-Key`:
 - `POST /destinations`
