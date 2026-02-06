@@ -154,6 +154,16 @@ http://localhost:8080/q/metrics
 ```
 Look for counters prefixed with `eventrelay.`.
 
+## Tracing (OpenTelemetry)
+Tracing is disabled by default. To enable OTLP export:
+```bash
+export OTEL_TRACES_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+```
+
+For GCP, run an OpenTelemetry Collector that exports to Cloud Trace and point
+`OTEL_EXPORTER_OTLP_ENDPOINT` to the collector.
+
 ## Health checks
 Liveness and readiness endpoints:
 ```
