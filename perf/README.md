@@ -16,8 +16,9 @@ docker compose -f docker-compose.yml -f docker-compose.perf.yml up --build -d
 BASE_URL=http://localhost:8080 \
 API_KEY=dev-admin-key \
 DEST_URL=http://webhook:8080/webhook \
-REQUESTS=2000 \
-CONCURRENCY=50 \
+DESTINATIONS=20 \
+REQUESTS=100000 \
+CONCURRENCY=200 \
 ./scripts/load/run_event_load.sh
 ```
 
@@ -28,3 +29,5 @@ docker compose -f docker-compose.yml -f docker-compose.perf.yml down
 
 ## Results
 Record a short summary in `perf/results.md`.
+Store Grafana screenshots in `perf/artifacts/` using a run-id prefix, for example:
+`2026-02-06-run2-ingest-rate.png`.
