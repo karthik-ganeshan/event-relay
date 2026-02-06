@@ -14,6 +14,23 @@ Event Relay is a small backend service that accepts events, stores them in Postg
 - API key auth + rate limits on admin endpoints
 - Prometheus metrics and request correlation logging
 
+## Architecture
+```
+Clients
+  |
+  v
+Event Relay API  --->  Postgres (events, deliveries, attempts)
+  |                      ^
+  |                      |
+  v                      |
+Delivery Worker ---------+
+  |
+  v
+Webhook Destinations
+
+Observability: logs + /q/metrics + /q/health
+```
+
 ## Prerequisites
 - JDK 21 (non-Mandrel, via SDKMAN)
 - Docker Desktop (daemon running)
