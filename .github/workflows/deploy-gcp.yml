@@ -1,0 +1,57 @@
+name: Deploy to Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "GCP project id"
+        required: true
+      region:
+        description: "GCP region"
+        required: true
+        default: "us-central1"
+      service:
+        description: "Cloud Run service name"
+        required: true
+        default: "event-relay"
+      artifact_repo:
+        description: "Artifact Registry repo name"
+        required: true
+        default: "containers"
+      image_name:
+        description: "Container image name"
+        required: true
+        default: "event-relay"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ inputs.region }}-docker.pkg.dev --quiet
+      - name: Build and push image
+        run: |
+          IMAGE="${{ inputs.region }}-docker.pkg.dev/${{ inputs.project_id }}/${{ inputs.artifact_repo }}/${{ inputs.image_name }}:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ inputs.service }}" \
+            --image "$IMAGE" \
+            --region "${{ inputs.region }}" \
+            --project "${{ inputs.project_id }}" \
+            --platform managed \
+            --quiet

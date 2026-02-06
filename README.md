@@ -53,6 +53,10 @@ Default API key in `docker-compose.yml`: `dev-admin-key`
 ## GCP Terraform
 Terraform scaffolding for Cloud Run + Cloud SQL lives in `infra/gcp`
 
+## GCP deploy
+After provisioning infra, you can deploy from GitHub Actions using the
+`Deploy to Cloud Run` workflow and the secrets listed in `infra/gcp/README.md`
+
 ## Demo flow (Docker)
 In another terminal:
 ```bash
