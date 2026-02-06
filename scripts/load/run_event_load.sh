@@ -6,38 +6,44 @@ API_KEY=${API_KEY:-dev-admin-key}
 REQUESTS=${REQUESTS:-500}
 CONCURRENCY=${CONCURRENCY:-20}
 DEST_URL=${DEST_URL:-http://localhost:65535/webhook}
+DESTINATIONS=${DESTINATIONS:-1}
 
 create_destination() {
   local name
-  name="LoadTest-$(date +%s)"
+  name="LoadTest-$(date +%s)-$2"
   curl -s -o "$1" -w "%{http_code}" -X POST "$BASE_URL/destinations" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: $API_KEY" \
     -d "{\"name\":\"$name\",\"url\":\"$DEST_URL\"}"
 }
 
-dest_tmp=$(mktemp)
-dest_code=$(create_destination "$dest_tmp")
-dest_body=$(cat "$dest_tmp")
+dest_ids=()
+for i in $(seq 1 "$DESTINATIONS"); do
+  dest_tmp=$(mktemp)
+  dest_code=$(create_destination "$dest_tmp" "$i")
+  dest_body=$(cat "$dest_tmp")
 
-dest_id=$(python3 - <<'PY' "$dest_tmp"
+  dest_id=$(python3 - <<'PY' "$dest_tmp"
 import json
 import sys
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     data = json.load(handle)
 print(data.get("id", ""))
 PY
-)
+  )
 
-rm -f "$dest_tmp"
+  rm -f "$dest_tmp"
 
-if [ -z "$dest_id" ]; then
-  echo "Failed to create destination (status $dest_code)" >&2
-  echo "$dest_body" >&2
-  exit 1
-fi
+  if [ -z "$dest_id" ]; then
+    echo "Failed to create destination (status $dest_code)" >&2
+    echo "$dest_body" >&2
+    exit 1
+  fi
 
-python3 - <<'PY' "$BASE_URL" "$API_KEY" "$dest_id" "$REQUESTS" "$CONCURRENCY"
+  dest_ids+=("$dest_id")
+done
+
+python3 - <<'PY' "$BASE_URL" "$API_KEY" "$REQUESTS" "$CONCURRENCY" "${dest_ids[@]}"
 import json
 import statistics
 import sys
@@ -47,13 +53,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 base_url = sys.argv[1]
 api_key = sys.argv[2]
-dest_id = sys.argv[3]
-request_count = int(sys.argv[4])
-concurrency = int(sys.argv[5])
+request_count = int(sys.argv[3])
+concurrency = int(sys.argv[4])
+dest_ids = sys.argv[5:]
 
 url = base_url.rstrip("/") + "/events"
 
 def send_request(i):
+    dest_id = dest_ids[(i - 1) % len(dest_ids)]
     payload = {"destinationId": dest_id, "payload": {"userId": f"user-{i}"}}
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
