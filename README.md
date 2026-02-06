@@ -49,6 +49,7 @@ docker compose up --build
 ```
 
 Default API key in `docker-compose.yml`: `dev-admin-key`
+Postgres is exposed on host port `5433`
 
 ## GCP Terraform
 Terraform scaffolding for Cloud Run + Cloud SQL lives in `infra/gcp`
@@ -154,6 +155,46 @@ http://localhost:8080/q/metrics
 ```
 Look for counters prefixed with `eventrelay.`.
 
+## Observability
+Alert rules:
+- `observability/alerts.yml`
+
+Grafana dashboard:
+- `observability/grafana-dashboard.json`
+
+SLO targets and PromQL:
+- `docs/slo.md`
+
+Sample PromQL:
+```
+sum(rate(eventrelay_events_created_total[1m]))
+sum(rate(eventrelay_deliveries_delivered_total[1m]))
+rate(eventrelay_deliveries_latency_seconds_sum[5m]) / rate(eventrelay_deliveries_latency_seconds_count[5m])
+```
+
+### Prometheus + Grafana (Docker)
+Start the stack:
+```bash
+docker compose up --build
+```
+
+Prometheus UI:
+```
+http://localhost:9090
+```
+
+Grafana UI:
+```
+http://localhost:3000
+```
+
+Grafana login:
+- user: `admin`
+- password: `admin`
+
+The dashboard named `Event Relay` is auto-provisioned from:
+`observability/grafana-dashboard.json`
+
 ## Tracing (OpenTelemetry)
 Tracing is disabled by default. To enable OTLP export:
 ```bash
@@ -207,6 +248,7 @@ Common failure scenarios:
 Recovery:
 - Use `POST /deliveries/{id}/redrive` to requeue a FAILED delivery
 - Review attempt history via `GET /deliveries/{id}/attempts`
+- Check alert rules in `observability/alerts.yml` and SLO targets in `docs/slo.md`
 
 ## Configuration
 Worker settings (defaults in `application.properties`):
