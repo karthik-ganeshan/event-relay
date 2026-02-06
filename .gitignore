@@ -39,6 +39,12 @@ nb-configuration.xml
 # Local environment
 .env
 
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
 # Plugin directory
 /.quarkus/cli/plugins/
 # TLS Certificates

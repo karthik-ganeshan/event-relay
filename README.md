@@ -50,6 +50,9 @@ docker compose up --build
 
 Default API key in `docker-compose.yml`: `dev-admin-key`
 
+## GCP Terraform
+Terraform scaffolding for Cloud Run + Cloud SQL lives in `infra/gcp`
+
 ## Demo flow (Docker)
 In another terminal:
 ```bash
