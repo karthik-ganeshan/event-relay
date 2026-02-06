@@ -1,0 +1,52 @@
+groups:
+- name: event-relay
+  rules:
+  - alert: EventRelayDeadLetters
+    expr: increase(eventrelay_deliveries_dead_lettered_total[5m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+      service: event-relay
+    annotations:
+      summary: "Dead-lettered deliveries detected"
+      description: "Dead-lettered deliveries increased in the last 5m"
+
+  - alert: EventRelayDeliveryFailuresHigh
+    expr: rate(eventrelay_deliveries_failed_total[5m]) > 0
+    for: 10m
+    labels:
+      severity: warning
+      service: event-relay
+    annotations:
+      summary: "Delivery failures observed"
+      description: "Deliveries are failing in the last 5m"
+
+  - alert: EventRelayWorkerStalled
+    expr: increase(eventrelay_events_created_total[10m]) > 0 and increase(eventrelay_deliveries_claimed_total[10m]) == 0
+    for: 10m
+    labels:
+      severity: critical
+      service: event-relay
+    annotations:
+      summary: "Delivery worker not claiming deliveries"
+      description: "Events are being created but deliveries are not claimed"
+
+  - alert: EventRelayDestinationCooldowned
+    expr: increase(eventrelay_destinations_cooldowned_total[10m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+      service: event-relay
+    annotations:
+      summary: "Destination cooldown triggered"
+      description: "A destination entered cooldown due to repeated failures"
+
+  - alert: EventRelayDeliveryLatencyHigh
+    expr: (rate(eventrelay_deliveries_latency_seconds_sum[5m]) / rate(eventrelay_deliveries_latency_seconds_count[5m])) > 2
+    for: 10m
+    labels:
+      severity: warning
+      service: event-relay
+    annotations:
+      summary: "Delivery latency elevated"
+      description: "Average delivery latency is above 2s"

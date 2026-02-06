@@ -1,0 +1,147 @@
+{
+  "uid": "event-relay",
+  "title": "Event Relay",
+  "schemaVersion": 38,
+  "version": 1,
+  "timezone": "browser",
+  "refresh": "10s",
+  "tags": ["event-relay"],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "datasource",
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Event ingest rate",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum(rate(eventrelay_events_created_total[1m]))",
+          "legendFormat": "events/s",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Delivery outcomes rate",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum(rate(eventrelay_deliveries_delivered_total[1m]))",
+          "legendFormat": "delivered",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(eventrelay_deliveries_failed_total[1m]))",
+          "legendFormat": "failed",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(eventrelay_deliveries_dead_lettered_total[1m]))",
+          "legendFormat": "dead_lettered",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(eventrelay_deliveries_retried_total[1m]))",
+          "legendFormat": "retried",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Delivery latency avg (s)",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "rate(eventrelay_deliveries_latency_seconds_sum[5m]) / rate(eventrelay_deliveries_latency_seconds_count[5m])",
+          "legendFormat": "avg",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Dead letters (5m)",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "increase(eventrelay_deliveries_dead_lettered_total[5m])",
+          "legendFormat": "dead_lettered",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Destination cooldowns (10m)",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum(increase(eventrelay_destinations_cooldowned_total[10m]))",
+          "legendFormat": "cooldowns",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      }
+    }
+  ]
+}
