@@ -233,6 +233,8 @@ Status codes: {'201': 500}
 Latency(s) p50/p95/p99/avg/max: 0.0151 0.0391 0.298 0.0249 0.5332
 ```
 
+For Docker-based load testing with a webhook echo target, see `perf/README.md`
+
 ## Tests
 Run integration tests:
 ```bash

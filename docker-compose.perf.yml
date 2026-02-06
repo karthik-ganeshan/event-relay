@@ -1,0 +1,10 @@
+services:
+  app:
+    environment:
+      EVENTRELAY_WORKER_ENABLED: "true"
+      EVENTRELAY_RATELIMIT_CREATE_LIMIT: "10000"
+      EVENTRELAY_RATELIMIT_CREATE_WINDOW_SECONDS: "1"
+  webhook:
+    image: mendhak/http-https-echo:31
+    environment:
+      HTTP_PORT: 8080

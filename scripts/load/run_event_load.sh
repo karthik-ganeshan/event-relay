@@ -5,6 +5,7 @@ BASE_URL=${BASE_URL:-http://localhost:8080}
 API_KEY=${API_KEY:-dev-admin-key}
 REQUESTS=${REQUESTS:-500}
 CONCURRENCY=${CONCURRENCY:-20}
+DEST_URL=${DEST_URL:-http://localhost:65535/webhook}
 
 create_destination() {
   local name
@@ -12,7 +13,7 @@ create_destination() {
   curl -s -o "$1" -w "%{http_code}" -X POST "$BASE_URL/destinations" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: $API_KEY" \
-    -d "{\"name\":\"$name\",\"url\":\"http://localhost:65535/webhook\"}"
+    -d "{\"name\":\"$name\",\"url\":\"$DEST_URL\"}"
 }
 
 dest_tmp=$(mktemp)
