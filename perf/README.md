@@ -22,6 +22,19 @@ CONCURRENCY=200 \
 ./scripts/load/run_event_load.sh
 ```
 
+## Scaling test (more destinations + larger batch)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.perf.yml -f docker-compose.scale.yml up --build -d
+
+BASE_URL=http://localhost:8080 \
+API_KEY=dev-admin-key \
+DEST_URL=http://webhook:8080/webhook \
+DESTINATIONS=50 \
+REQUESTS=100000 \
+CONCURRENCY=200 \
+./scripts/load/run_event_load.sh
+```
+
 ## Clean up
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.perf.yml down

@@ -93,7 +93,7 @@
       "datasource": "${DS_PROMETHEUS}",
       "targets": [
         {
-          "expr": "rate(eventrelay_deliveries_latency_seconds_sum[5m]) / rate(eventrelay_deliveries_latency_seconds_count[5m])",
+          "expr": "sum(rate(eventrelay_deliveries_latency_seconds_sum[5m])) / sum(rate(eventrelay_deliveries_latency_seconds_count[5m]))",
           "legendFormat": "avg",
           "refId": "A"
         }
